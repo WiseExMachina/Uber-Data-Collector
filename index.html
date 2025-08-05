@@ -1,0 +1,65 @@
+// ID of your Google Sheet. You can find this in the sheet's URL.
+// Example URL: https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID_HERE/edit
+const SPREADSHEET_ID = '1OS1GgHtkq0rPAGoKxJPUZ7Jpw22Keijf6rGvfuydCXQ'; // <-- REPLACE THIS WITH YOUR ACTUAL SHEET ID
+const SHEET_NAME = 'Sheet1'; // Make sure this matches the name of your sheet tab
+
+// This function runs when the web app receives a POST request (data from your HTML form)
+function doPost(e) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000); // Wait 30 seconds for lock, if needed
+
+  try {
+    const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
+    const data = e.parameter; // Data sent from the HTML form
+
+    // Parse lap times and calculate derived metrics
+    const lapTimesArray = data.lapTimesRaw.split(/[\n,]+/).map(s => s.trim()).filter(s => s.length > 0);
+    const numRequests = lapTimesArray.length;
+    let totalSeconds = 0;
+
+    lapTimesArray.forEach(timeStr => {
+      totalSeconds += parseLapTime(timeStr);
+    });
+
+    const totalMinutes = totalSeconds / 60;
+    const requestsPerMinute = numRequests > 0 ? numRequests / totalMinutes : 0;
+
+    // Prepare the row to append
+    const rowData = [
+      data.date,
+      data.timeWindow,
+      data.dayOfWeek,
+      numRequests,
+      totalMinutes.toFixed(2),
+      requestsPerMinute.toFixed(2),
+      data.publicHoliday,
+      data.specialEvent || '-'
+    ];
+
+    sheet.appendRow(rowData); // Append the data to the sheet
+
+    return ContentService.createTextOutput(JSON.stringify({ success: true, message: 'Data saved successfully!' }))
+      .setMimeType(ContentService.MimeType.JSON);
+
+  } catch (error) {
+    return ContentService.createTextOutput(JSON.stringify({ success: false, message: error.message }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// Helper function to parse lap time strings (same as in your HTML)
+function parseLapTime(timeStr) {
+  const parts = timeStr.split(':');
+  if (parts.length === 3) {
+    const minutes = parseInt(parts[1]);
+    const seconds = parseFloat(parts[2]);
+    return (minutes * 60) + seconds;
+  } else if (parts.length === 2) {
+    const minutes = parseInt(parts[0]);
+    const seconds = parseFloat(parts[1]);
+    return (minutes * 60) + seconds;
+  }
+  return 0;
+}

@@ -1,65 +1,305 @@
-// ID of your Google Sheet. You can find this in the sheet's URL.
-// Example URL: https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID_HERE/edit
-const SPREADSHEET_ID = '1OS1GgHtkq0rPAGoKxJPUZ7Jpw22Keijf6rGvfuydCXQ'; // <-- REPLACE THIS WITH YOUR ACTUAL SHEET ID
-const SHEET_NAME = 'Sheet1'; // Make sure this matches the name of your sheet tab
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Uber Ride Data Collector</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f4f8;
+        }
+        .table-container {
+            max-height: 70vh; /* Limit height to enable scrolling */
+            overflow-y: auto;
+        }
+        th, td {
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid #e2e8f0;
+        }
+        th {
+            background-color: #e2e8f0;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        input[type="text"], input[type="date"], select {
+            border: 1px solid #cbd5e0;
+            border-radius: 0.5rem;
+            padding: 0.5rem 0.75rem;
+            width: 100%;
+            box-sizing: border-box;
+        }
+        input[type="checkbox"] {
+            transform: scale(1.2);
+            margin-left: 0.5rem;
+        }
+        .message-box {
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+            background-color: #fff; padding: 20px; border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.2); z-index: 1000;
+            text-align: center; font-family: 'Inter', sans-serif;
+            max-width: 300px;
+        }
+        .loading-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(0, 0, 0, 0.5); display: flex;
+            justify-content: center; align-items: center; z-index: 1001;
+            color: white; font-size: 1.5rem;
+        }
+    </style>
+</head>
+<body class="p-4">
+    <div class="max-w-6xl mx-auto bg-white rounded-2xl shadow-xl p-6 md:p-8">
+        <h1 class="text-4xl font-extrabold text-slate-800 text-center mb-6">
+            Uber Ride Data Collector
+        </h1>
+        <p class="text-center text-slate-600 mb-8">
+            Input your observed ride request data to help build your prediction model.
+        </p>
 
-// This function runs when the web app receives a POST request (data from your HTML form)
-function doPost(e) {
-  const lock = LockService.getScriptLock();
-  lock.waitLock(30000); // Wait 30 seconds for lock, if needed
+        <div class="mb-6 bg-slate-50 p-6 rounded-xl shadow-inner">
+            <h2 class="text-2xl font-bold text-slate-700 mb-4">Add New Observation</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
+                <div>
+                    <label for="inputDate" class="block text-slate-700 text-sm font-semibold mb-1">Date</label>
+                    <input type="date" id="inputDate" class="focus:ring-teal-500 focus:border-teal-500">
+                </div>
+                <div>
+                    <label for="inputTimeWindow" class="block text-slate-700 text-sm font-semibold mb-1">Time Window</label>
+                    <select id="inputTimeWindow" class="focus:ring-teal-500 focus:border-teal-500">
+                        <option value="">Select Time Window</option>
+                        <option value="10:00 AM - 10:15 AM">10:00 AM - 10:15 AM</option>
+                        <option value="11:00 AM - 11:15 AM">11:00 AM - 11:15 AM</option>
+                        <!-- Add other relevant 15-minute windows if needed -->
+                    </select>
+                </div>
+                <div>
+                    <label for="inputDayOfWeek" class="block text-slate-700 text-sm font-semibold mb-1">Day of Week</label>
+                    <select id="inputDayOfWeek" class="focus:ring-teal-500 focus:border-teal-500">
+                        <option value="">Auto-Detect or Select</option>
+                        <option value="Sunday">Sunday</option>
+                        <option value="Monday">Monday</option>
+                        <option value="Tuesday">Tuesday</option>
+                        <option value="Wednesday">Wednesday</option>
+                        <option value="Thursday">Thursday</option>
+                        <option value="Friday">Friday</option>
+                        <option value="Saturday">Saturday</option>
+                    </select>
+                </div>
+            </div>
+            <div class="mb-4">
+                <label for="inputLapTimes" class="block text-slate-700 text-sm font-semibold mb-1">
+                    Lap Times (e.g., 00:31.45, 00:28.01, 01:35.54)
+                </label>
+                <textarea id="inputLapTimes" rows="3" class="w-full p-3 border border-slate-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-teal-500 text-slate-700" placeholder="Paste your stopwatch lap times here, separated by commas or new lines."></textarea>
+            </div>
+            <div class="flex items-center mb-4">
+                <input type="checkbox" id="inputPublicHoliday" class="mr-2 text-teal-600 focus:ring-teal-500 rounded">
+                <label for="inputPublicHoliday" class="text-slate-700 text-sm font-semibold">Public Holiday?</label>
+            </div>
+            <div class="mb-4">
+                <label for="inputSpecialEvent" class="block text-slate-700 text-sm font-semibold mb-1">Special Event (e.g., Concert, Game)</label>
+                <input type="text" id="inputSpecialEvent" class="focus:ring-teal-500 focus:border-teal-500" placeholder="Any major event happening?">
+            </div>
+            <button id="addRowBtn" class="w-full bg-teal-600 hover:bg-teal-700 text-white font-bold py-3 px-6 rounded-xl transition duration-300 shadow-md transform hover:scale-105">
+                Add Observation
+            </button>
+        </div>
 
-  try {
-    const sheet = SpreadsheetApp.openById(SPREADSHEET_ID).getSheetByName(SHEET_NAME);
-    const data = e.parameter; // Data sent from the HTML form
+        <div class="table-container rounded-lg shadow-md overflow-hidden">
+            <table class="min-w-full bg-white">
+                <thead>
+                    <tr>
+                        <th class="bg-teal-600 text-white text-sm uppercase tracking-wider">Date</th>
+                        <th class="bg-teal-600 text-white text-sm uppercase tracking-wider">Time Window</th>
+                        <th class="bg-teal-600 text-white text-sm uppercase tracking-wider">Day of Week</th>
+                        <th class="bg-teal-600 text-white text-sm uppercase tracking-wider">Requests (#)</th>
+                        <th class="bg-teal-600 text-white text-sm uppercase tracking-wider">Obs. Time (min)</th>
+                        <th class="bg-teal-600 text-white text-sm uppercase tracking-wider">Reqs/Min</th>
+                        <th class="bg-teal-600 text-white text-sm uppercase tracking-wider">Holiday</th>
+                        <th class="bg-teal-600 text-white text-sm uppercase tracking-wider">Special Event</th>
+                        <th class="bg-teal-600 text-white text-sm uppercase tracking-wider">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="dataTableBody">
+                    <!-- Data rows will be inserted here by JavaScript -->
+                </tbody>
+            </table>
+        </div>
+    </div>
 
-    // Parse lap times and calculate derived metrics
-    const lapTimesArray = data.lapTimesRaw.split(/[\n,]+/).map(s => s.trim()).filter(s => s.length > 0);
-    const numRequests = lapTimesArray.length;
-    let totalSeconds = 0;
+    <script>
+        // REPLACE THIS WITH YOUR DEPLOYED GOOGLE APPS SCRIPT WEB APP URL
+        const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbxce1z78E2SooDDUnMXfTgeE7kct-d2yJCeHQCMUJl3P-ABFEJM-EZja6jK3fW7qaRSTA/exec'; 
 
-    lapTimesArray.forEach(timeStr => {
-      totalSeconds += parseLapTime(timeStr);
-    });
+        const addRowBtn = document.getElementById('addRowBtn');
+        const dataTableBody = document.getElementById('dataTableBody');
+        const inputDate = document.getElementById('inputDate');
+        const inputTimeWindow = document.getElementById('inputTimeWindow');
+        const inputDayOfWeek = document.getElementById('inputDayOfWeek');
+        const inputLapTimes = document.getElementById('inputLapTimes');
+        const inputPublicHoliday = document.getElementById('inputPublicHoliday');
+        const inputSpecialEvent = document.getElementById('inputSpecialEvent');
 
-    const totalMinutes = totalSeconds / 60;
-    const requestsPerMinute = numRequests > 0 ? numRequests / totalMinutes : 0;
+        // Set today's date by default
+        inputDate.valueAsDate = new Date();
+        // Auto-detect day of week
+        inputDayOfWeek.value = new Date().toLocaleString('en-us', { weekday: 'long' });
 
-    // Prepare the row to append
-    const rowData = [
-      data.date,
-      data.timeWindow,
-      data.dayOfWeek,
-      numRequests,
-      totalMinutes.toFixed(2),
-      requestsPerMinute.toFixed(2),
-      data.publicHoliday,
-      data.specialEvent || '-'
-    ];
+        addRowBtn.addEventListener('click', addDataRow);
 
-    sheet.appendRow(rowData); // Append the data to the sheet
+        function parseLapTime(timeStr) {
+            const parts = timeStr.split(':');
+            if (parts.length === 3) {
+                const minutes = parseInt(parts[1]);
+                const seconds = parseFloat(parts[2]);
+                return (minutes * 60) + seconds;
+            } else if (parts.length === 2) {
+                const minutes = parseInt(parts[0]);
+                const seconds = parseFloat(parts[1]);
+                return (minutes * 60) + seconds;
+            }
+            return 0;
+        }
 
-    return ContentService.createTextOutput(JSON.stringify({ success: true, message: 'Data saved successfully!' }))
-      .setMimeType(ContentService.MimeType.JSON);
+        async function addDataRow() {
+            const date = inputDate.value;
+            const timeWindow = inputTimeWindow.value;
+            const dayOfWeek = inputDayOfWeek.value;
+            const lapTimesRaw = inputLapTimes.value;
+            const publicHoliday = inputPublicHoliday.checked ? 'Yes' : 'No';
+            const specialEvent = inputSpecialEvent.value.trim();
 
-  } catch (error) {
-    return ContentService.createTextOutput(JSON.stringify({ success: false, message: error.message }))
-      .setMimeType(ContentService.MimeType.JSON);
-  } finally {
-    lock.releaseLock();
-  }
-}
+            if (!date || !timeWindow || !dayOfWeek || !lapTimesRaw) {
+                showMessage('Please fill in Date, Time Window, Day of Week, and Lap Times.', 'error');
+                return;
+            }
+            // This is the check for the placeholder URL
+            if (WEB_APP_URL === 'YOUR_APPS_SCRIPT_WEB_APP_URL_HERE' || !WEB_APP_URL.startsWith('https://script.google.com/macros/s/')) {
+                showMessage('Please replace "YOUR_APPS_SCRIPT_WEB_APP_URL_HERE" in the HTML code with your actual deployed Google Apps Script Web App URL.', 'error');
+                return;
+            }
 
-// Helper function to parse lap time strings (same as in your HTML)
-function parseLapTime(timeStr) {
-  const parts = timeStr.split(':');
-  if (parts.length === 3) {
-    const minutes = parseInt(parts[1]);
-    const seconds = parseFloat(parts[2]);
-    return (minutes * 60) + seconds;
-  } else if (parts.length === 2) {
-    const minutes = parseInt(parts[0]);
-    const seconds = parseFloat(parts[1]);
-    return (minutes * 60) + seconds;
-  }
-  return 0;
-}
+            const lapTimesArray = lapTimesRaw.split(/[\n,]+/).map(s => s.trim()).filter(s => s.length > 0);
+            const numRequests = lapTimesArray.length;
+            let totalSeconds = 0;
+
+            lapTimesArray.forEach(timeStr => {
+                totalSeconds += parseLapTime(timeStr);
+            });
+
+            const totalMinutes = totalSeconds / 60;
+            const requestsPerMinute = numRequests > 0 ? numRequests / totalMinutes : 0;
+
+            // Prepare data to send to Apps Script
+            const formData = new FormData();
+            formData.append('date', date);
+            formData.append('timeWindow', timeWindow);
+            formData.append('dayOfWeek', dayOfWeek);
+            formData.append('lapTimesRaw', lapTimesRaw); // Send raw lap times for Apps Script to parse
+            formData.append('publicHoliday', publicHoliday);
+            formData.append('specialEvent', specialEvent);
+
+            showLoading('Saving data...');
+
+            try {
+                const response = await fetch(WEB_APP_URL, {
+                    method: 'POST',
+                    body: formData // FormData automatically sets Content-Type
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    showMessage('Data saved successfully to Google Sheet!', 'success');
+                    // Add row to local table for immediate feedback
+                    const newRow = dataTableBody.insertRow();
+                    newRow.innerHTML = `
+                        <td class="text-slate-700">${date}</td>
+                        <td class="text-slate-700">${timeWindow}</td>
+                        <td class="text-slate-700">${dayOfWeek}</td>
+                        <td class="text-slate-700">${numRequests}</td>
+                        <td class="text-slate-700">${totalMinutes.toFixed(2)}</td>
+                        <td class="text-slate-700">${requestsPerMinute.toFixed(2)}</td>
+                        <td class="text-slate-700">${publicHoliday}</td>
+                        <td class="text-slate-700">${specialEvent || '-'}</td>
+                        <td>
+                            <button onclick="deleteRow(this)" class="text-red-500 hover:text-red-700 font-bold py-1 px-2 rounded-md transition-colors duration-200">
+                                Delete
+                            </button>
+                        </td>
+                    `;
+                    // Clear inputs for next entry
+                    inputLapTimes.value = '';
+                    inputPublicHoliday.checked = false;
+                    inputSpecialEvent.value = '';
+                } else {
+                    showMessage(`Error saving data: ${result.message}`, 'error');
+                }
+            } catch (error) {
+                showMessage(`Network error: ${error.message}. Check console for details.`, 'error');
+            } finally {
+                hideLoading();
+            }
+        }
+
+        function deleteRow(button) {
+            // Note: This only deletes from the *local* table.
+            // Deleting from Google Sheet would require more complex Apps Script functionality.
+            const row = button.parentNode.parentNode;
+            row.parentNode.removeChild(row);
+            showMessage('Row deleted from local table (not from Google Sheet).', 'info');
+        }
+
+        // Custom message box for iFrame compatibility and better UX
+        function showMessage(message, type = 'info') {
+            const existingBox = document.querySelector('.message-box');
+            if (existingBox) existingBox.remove();
+
+            const alertBox = document.createElement('div');
+            alertBox.className = 'message-box';
+            let bgColor = 'bg-teal-100';
+            let textColor = 'text-teal-800';
+            if (type === 'error') {
+                bgColor = 'bg-red-100';
+                textColor = 'text-red-800';
+            } else if (type === 'success') {
+                bgColor = 'bg-green-100';
+                textColor = 'text-green-800';
+            }
+
+            alertBox.innerHTML = `
+                <div class="${bgColor} ${textColor} p-4 rounded-lg mb-4">
+                    <p class="text-lg">${message}</p>
+                </div>
+                <button class="bg-teal-600 hover:bg-teal-700 text-white font-bold py-2 px-4 rounded-md" onclick="this.parentNode.remove()">
+                    OK
+                </button>
+            `;
+            document.body.appendChild(alertBox);
+        }
+
+        let loadingOverlay = null;
+        function showLoading(message) {
+            if (!loadingOverlay) {
+                loadingOverlay = document.createElement('div');
+                loadingOverlay.className = 'loading-overlay';
+                document.body.appendChild(loadingOverlay);
+            }
+            loadingOverlay.innerHTML = `<p>${message}</p>`;
+            loadingOverlay.style.display = 'flex';
+        }
+
+        function hideLoading() {
+            if (loadingOverlay) {
+                loadingOverlay.style.display = 'none';
+            }
+        }
+    </script>
+</body>
+</html>
+
